@@ -1,26 +1,22 @@
 
-import { Search, Grid, List, Settings } from "lucide-react";
+import { Grid, List, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import SearchBar from "@/components/SearchBar";
 
 interface HeaderProps {
   viewMode: 'grid' | 'list';
   setViewMode: (mode: 'grid' | 'list') => void;
+  onSearch: (query: string) => void;
+  onClearSearch: () => void;
 }
 
-const Header = ({ viewMode, setViewMode }: HeaderProps) => {
+const Header = ({ viewMode, setViewMode, onSearch, onClearSearch }: HeaderProps) => {
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4 flex-1">
           <h2 className="text-2xl font-bold text-gray-900">My Files</h2>
-          <div className="relative max-w-md flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <Input
-              placeholder="Search files..."
-              className="pl-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
-            />
-          </div>
+          <SearchBar onSearch={onSearch} onClear={onClearSearch} />
         </div>
 
         <div className="flex items-center space-x-3">

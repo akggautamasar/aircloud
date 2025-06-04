@@ -1,14 +1,20 @@
 
-import { Upload, Folder, File, Archive, ArchiveRestore, Cloud } from "lucide-react";
+import { Upload, Folder, File, Archive, ArchiveRestore, Cloud, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const Sidebar = () => {
+interface SidebarProps {
+  currentView: string;
+  onViewChange: (view: string) => void;
+}
+
+const Sidebar = ({ currentView, onViewChange }: SidebarProps) => {
   const menuItems = [
-    { icon: Cloud, label: "All Files", active: true },
-    { icon: Upload, label: "Recent", active: false },
-    { icon: Folder, label: "Folders", active: false },
-    { icon: Archive, label: "Archive", active: false },
-    { icon: ArchiveRestore, label: "Shared", active: false },
+    { icon: Cloud, label: "All Files", view: "all", active: currentView === "all" },
+    { icon: Upload, label: "Recent", view: "recent", active: currentView === "recent" },
+    { icon: Folder, label: "Folders", view: "folders", active: currentView === "folders" },
+    { icon: Archive, label: "Archive", view: "archive", active: currentView === "archive" },
+    { icon: ArchiveRestore, label: "Shared", view: "shared", active: currentView === "shared" },
+    { icon: Trash2, label: "Trash", view: "trash", active: currentView === "trash" },
   ];
 
   return (
@@ -29,6 +35,7 @@ const Sidebar = () => {
         {menuItems.map((item, index) => (
           <button
             key={index}
+            onClick={() => onViewChange(item.view)}
             className={cn(
               "w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-all duration-200 hover:bg-gray-50",
               item.active && "bg-blue-50 text-blue-600 border border-blue-200"
