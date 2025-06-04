@@ -2,6 +2,7 @@
 import { Grid, List, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import SearchBar from "@/components/SearchBar";
+import UserMenu from "@/components/UserMenu";
 
 interface HeaderProps {
   viewMode: 'grid' | 'list';
@@ -43,6 +44,8 @@ const Header = ({ viewMode, setViewMode, onSearch, onClearSearch }: HeaderProps)
             <Settings className="w-4 h-4 mr-2" />
             Settings
           </Button>
+          
+          <UserMenu />
         </div>
       </div>
     </header>

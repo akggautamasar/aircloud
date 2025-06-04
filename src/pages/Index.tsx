@@ -1,5 +1,6 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import FileUpload from "@/components/FileUpload";
 import FileGrid from "@/components/FileGrid";
 import Sidebar from "@/components/Sidebar";
@@ -7,8 +8,11 @@ import Header from "@/components/Header";
 import FolderCreator from "@/components/FolderCreator";
 import UrlDownloader from "@/components/UrlDownloader";
 import TrashManager from "@/components/TrashManager";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Index = () => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [currentView, setCurrentView] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -22,6 +26,12 @@ const Index = () => {
     { id: 4, name: "old_document.pdf", type: "file" as const, size: "1.2 MB", deletedAt: "2 days ago" },
     { id: 5, name: "temp_folder", type: "folder" as const, deletedAt: "1 week ago" },
   ]);
+
+  useEffect(() => {
+    if (!user) {
+      navigate('/auth');
+    }
+  }, [user, navigate]);
 
   const handleFileUpload = (newFiles: File[]) => {
     const fileObjects = newFiles.map((file, index) => ({
@@ -70,6 +80,10 @@ const Index = () => {
   const filteredFiles = searchQuery 
     ? files.filter(file => file.name.toLowerCase().includes(searchQuery.toLowerCase()))
     : files;
+
+  if (!user) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
