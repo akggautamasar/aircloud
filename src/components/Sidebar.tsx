@@ -1,5 +1,5 @@
 
-import { Upload, Folder, File, Archive, ArchiveRestore, Cloud, Trash2 } from "lucide-react";
+import { Upload, Folder, File, Archive, ArchiveRestore, Cloud, Trash2, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface SidebarProps {
@@ -15,6 +15,7 @@ const Sidebar = ({ currentView, onViewChange }: SidebarProps) => {
     { icon: Archive, label: "Archive", view: "archive", active: currentView === "archive" },
     { icon: ArchiveRestore, label: "Shared", view: "shared", active: currentView === "shared" },
     { icon: Trash2, label: "Trash", view: "trash", active: currentView === "trash" },
+    { icon: Settings, label: "Settings", view: "settings", active: currentView === "settings" },
   ];
 
   return (
