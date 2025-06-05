@@ -1,4 +1,6 @@
 
+import { supabase } from "@/integrations/supabase/client";
+
 // API route handler to proxy edge function calls
 export const apiRoutes = {
   '/api/telegram/test-config': '/functions/v1/telegram-test-config',
