@@ -57,26 +57,22 @@ const TelegramSetup = () => {
 
     setLoading(true);
     try {
-      // Get user session for authenticated request
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      // Test the bot configuration first
-      const testResponse = await fetch('/functions/v1/telegram-test-config', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`,
-        },
-        body: JSON.stringify({
+      // Test the bot configuration first using Supabase client
+      const { data: testResult, error: testError } = await supabase.functions.invoke('telegram-test-config', {
+        body: {
           botToken: botToken.trim(),
           channelId: channelId.trim(),
           userId: user?.id,
-        }),
+        },
       });
 
-      if (!testResponse.ok) {
-        const errorData = await testResponse.json();
-        throw new Error(errorData.error || 'Failed to verify bot configuration');
+      if (testError) {
+        console.error('Test error:', testError);
+        throw new Error(testError.message || 'Failed to verify bot configuration');
+      }
+
+      if (!testResult?.success) {
+        throw new Error(testResult?.error || 'Failed to verify bot configuration');
       }
 
       // If test passes, save to database
@@ -98,6 +94,7 @@ const TelegramSetup = () => {
         description: "Telegram integration configured successfully",
       });
     } catch (error: any) {
+      console.error('Setup error:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to configure Telegram integration",
