@@ -8,7 +8,9 @@ import Header from "@/components/Header";
 import FolderCreator from "@/components/FolderCreator";
 import UrlDownloader from "@/components/UrlDownloader";
 import TrashManager from "@/components/TrashManager";
+import TelegramSetup from "@/components/TelegramSetup";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 
 const Index = () => {
   const { user } = useAuth();
@@ -16,11 +18,8 @@ const Index = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [currentView, setCurrentView] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [files, setFiles] = useState([
-    { id: 1, name: "document.pdf", size: "2.4 MB", type: "pdf", uploadedAt: "2 hours ago" },
-    { id: 2, name: "presentation.pptx", size: "5.1 MB", type: "pptx", uploadedAt: "1 day ago" },
-    { id: 3, name: "image.jpg", size: "1.8 MB", type: "jpg", uploadedAt: "3 days ago" },
-  ]);
+  const [files, setFiles] = useState([]);
+  const [telegramFiles, setTelegramFiles] = useState([]);
 
   const [trashedItems, setTrashedItems] = useState([
     { id: 4, name: "old_document.pdf", type: "file" as const, size: "1.2 MB", deletedAt: "2 days ago" },
@@ -30,18 +29,44 @@ const Index = () => {
   useEffect(() => {
     if (!user) {
       navigate('/auth');
+    } else {
+      fetchTelegramFiles();
     }
   }, [user, navigate]);
 
+  const fetchTelegramFiles = async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('telegram_files')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('uploaded_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching files:', error);
+        return;
+      }
+
+      const formattedFiles = data.map(file => ({
+        id: file.id,
+        name: file.file_name,
+        size: file.file_size ? `${(file.file_size / (1024 * 1024)).toFixed(1)} MB` : 'Unknown',
+        type: file.file_type?.split('/')[1] || 'unknown',
+        uploadedAt: new Date(file.uploaded_at).toLocaleDateString(),
+      }));
+
+      setTelegramFiles(formattedFiles);
+      setFiles(formattedFiles);
+    } catch (error) {
+      console.error('Error fetching Telegram files:', error);
+    }
+  };
+
   const handleFileUpload = (newFiles: File[]) => {
-    const fileObjects = newFiles.map((file, index) => ({
-      id: files.length + index + 1,
-      name: file.name,
-      size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-      type: file.name.split('.').pop()?.toLowerCase() || 'unknown',
-      uploadedAt: "Just now"
-    }));
-    setFiles([...fileObjects, ...files]);
+    // Refresh the file list after upload
+    fetchTelegramFiles();
   };
 
   const handleCreateFolder = (name: string) => {
@@ -105,6 +130,8 @@ const Index = () => {
                 onRestore={handleRestoreItem}
                 onPermanentDelete={handlePermanentDelete}
               />
+            ) : currentView === 'settings' ? (
+              <TelegramSetup />
             ) : (
               <>
                 <div className="flex flex-wrap gap-4">

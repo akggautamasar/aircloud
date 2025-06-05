@@ -3,6 +3,8 @@ import { Upload, CloudUpload } from "lucide-react";
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 
 interface FileUploadProps {
   onFileUpload: (files: File[]) => void;
@@ -13,6 +15,7 @@ const FileUpload = ({ onFileUpload }: FileUploadProps) => {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -42,18 +45,74 @@ const FileUpload = ({ onFileUpload }: FileUploadProps) => {
   };
 
   const uploadFiles = async (files: File[]) => {
+    if (!user) {
+      toast({
+        title: "Error",
+        description: "Please log in to upload files",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsUploading(true);
     
-    // Simulate upload to Telegram
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    onFileUpload(files);
-    setIsUploading(false);
-    
-    toast({
-      title: "Upload Successful",
-      description: `${files.length} file(s) uploaded to Telegram successfully!`,
-    });
+    try {
+      // Check if user has Telegram configured
+      const { data: config } = await supabase
+        .from('user_telegram_config')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (!config) {
+        toast({
+          title: "Telegram Not Configured",
+          description: "Please configure your Telegram integration first",
+          variant: "destructive",
+        });
+        setIsUploading(false);
+        return;
+      }
+
+      const uploadPromises = files.map(async (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        const response = await fetch('/functions/v1/telegram-upload', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session?.access_token}`,
+          },
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Upload failed');
+        }
+
+        return response.json();
+      });
+
+      await Promise.all(uploadPromises);
+      
+      onFileUpload(files);
+      
+      toast({
+        title: "Upload Successful",
+        description: `${files.length} file(s) uploaded to Telegram successfully!`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Upload Failed",
+        description: error.message || "Failed to upload files to Telegram",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   return (
@@ -96,7 +155,7 @@ const FileUpload = ({ onFileUpload }: FileUploadProps) => {
             {isUploading ? 'Uploading to Telegram...' : 'Drop files here or click to upload'}
           </h3>
           <p className="text-gray-500 mb-4">
-            Files will be securely stored on Telegram with unlimited space
+            Files will be securely stored on your Telegram channel with unlimited space
           </p>
           
           <Button 

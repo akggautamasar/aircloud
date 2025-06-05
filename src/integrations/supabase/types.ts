@@ -36,6 +36,72 @@ export type Database = {
         }
         Relationships: []
       }
+      telegram_files: {
+        Row: {
+          channel_id: string
+          file_name: string
+          file_size: number | null
+          file_type: string | null
+          id: string
+          telegram_file_id: string
+          telegram_message_id: number
+          uploaded_at: string | null
+          user_id: string
+        }
+        Insert: {
+          channel_id: string
+          file_name: string
+          file_size?: number | null
+          file_type?: string | null
+          id?: string
+          telegram_file_id: string
+          telegram_message_id: number
+          uploaded_at?: string | null
+          user_id: string
+        }
+        Update: {
+          channel_id?: string
+          file_name?: string
+          file_size?: number | null
+          file_type?: string | null
+          id?: string
+          telegram_file_id?: string
+          telegram_message_id?: number
+          uploaded_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_telegram_config: {
+        Row: {
+          bot_token: string
+          channel_id: string
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          bot_token: string
+          channel_id: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          bot_token?: string
+          channel_id?: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
