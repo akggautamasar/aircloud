@@ -62,11 +62,17 @@ serve(async (req) => {
     const fileInfoResponse = await fetch(fileInfoUrl)
     
     if (!fileInfoResponse.ok) {
-      const error = await fileInfoResponse.json()
-      throw new Error(`Failed to get file info: ${error.description}`)
+      const errorText = await fileInfoResponse.text()
+      console.error('Telegram getFile error:', errorText)
+      throw new Error(`Failed to get file info: ${errorText}`)
     }
 
     const fileInfo = await fileInfoResponse.json()
+    
+    if (!fileInfo.ok) {
+      throw new Error(`Telegram API error: ${fileInfo.description}`)
+    }
+    
     const filePath = fileInfo.result.file_path
 
     // Download file from Telegram
@@ -78,7 +84,16 @@ serve(async (req) => {
     }
 
     const fileData = await downloadResponse.arrayBuffer()
-    const base64Data = btoa(String.fromCharCode(...new Uint8Array(fileData)))
+    
+    // Convert to base64 for transport
+    const bytes = new Uint8Array(fileData)
+    let binary = ''
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i])
+    }
+    const base64Data = btoa(binary)
+
+    console.log(`File downloaded successfully, size: ${fileData.byteLength} bytes`)
 
     return new Response(
       JSON.stringify({ 

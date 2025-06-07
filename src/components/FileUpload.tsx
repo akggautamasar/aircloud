@@ -1,3 +1,4 @@
+
 import { Upload, CloudUpload } from "lucide-react";
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,20 @@ const FileUpload = ({ onFileUpload }: FileUploadProps) => {
     }
   };
 
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Remove the data URL prefix (e.g., "data:image/png;base64,")
+        const base64 = result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
   const uploadFiles = async (files: File[]) => {
     if (!user) {
       toast({
@@ -74,9 +89,12 @@ const FileUpload = ({ onFileUpload }: FileUploadProps) => {
       }
 
       const uploadPromises = files.map(async (file) => {
-        // Convert file to base64 for transmission
-        const fileBuffer = await file.arrayBuffer();
-        const fileBase64 = btoa(String.fromCharCode(...new Uint8Array(fileBuffer)));
+        console.log(`Processing file: ${file.name}, size: ${file.size}, type: ${file.type}`);
+        
+        // Convert file to base64
+        const fileBase64 = await fileToBase64(file);
+        
+        console.log(`File converted to base64, length: ${fileBase64.length}`);
 
         const { data: result, error } = await supabase.functions.invoke('telegram-upload', {
           body: {
@@ -93,9 +111,11 @@ const FileUpload = ({ onFileUpload }: FileUploadProps) => {
         }
 
         if (!result?.success) {
+          console.error('Upload result error:', result);
           throw new Error(result?.error || 'Upload failed');
         }
 
+        console.log('Upload successful:', result);
         return result;
       });
 

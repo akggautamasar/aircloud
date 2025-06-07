@@ -55,46 +55,53 @@ serve(async (req) => {
       throw new Error('No file data provided')
     }
 
-    // Convert base64 back to file for Telegram upload
-    const fileBuffer = Uint8Array.from(atob(fileData), c => c.charCodeAt(0))
-    const file = new File([fileBuffer], fileName, { type: fileType })
+    console.log(`Uploading file: ${fileName}, size: ${fileSize}, type: ${fileType}`)
 
-    // Prepare file for Telegram upload
-    const telegramFormData = new FormData()
-    telegramFormData.append('chat_id', config.channel_id)
+    // Convert base64 to blob
+    const binaryString = atob(fileData)
+    const bytes = new Uint8Array(binaryString.length)
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i)
+    }
     
-    // Use appropriate Telegram API endpoint based on file type
+    const blob = new Blob([bytes], { type: fileType })
+
+    // Prepare multipart form data for Telegram
+    const formData = new FormData()
+    formData.append('chat_id', config.channel_id)
+    
+    // Determine file type and use appropriate Telegram API endpoint
     const isVideo = fileType?.startsWith('video/') || fileName.toLowerCase().match(/\.(mp4|avi|mov|mkv|webm|m4v)$/i)
     const isImage = fileType?.startsWith('image/') || fileName.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i)
     
     let telegramUrl = `https://api.telegram.org/bot${config.bot_token}/sendDocument`
     
     if (isVideo) {
-      telegramFormData.append('video', file)
+      formData.append('video', blob, fileName)
       telegramUrl = `https://api.telegram.org/bot${config.bot_token}/sendVideo`
-      telegramFormData.append('supports_streaming', 'true')
+      formData.append('supports_streaming', 'true')
     } else if (isImage) {
-      telegramFormData.append('photo', file)
+      formData.append('photo', blob, fileName)
       telegramUrl = `https://api.telegram.org/bot${config.bot_token}/sendPhoto`
     } else {
-      telegramFormData.append('document', file)
+      formData.append('document', blob, fileName)
     }
     
     const caption = `📎 ${fileName}\n💾 Size: ${(fileSize / 1024 / 1024).toFixed(2)} MB\n⏰ Uploaded: ${new Date().toLocaleString()}`
-    telegramFormData.append('caption', caption)
+    formData.append('caption', caption)
 
-    console.log(`Uploading ${isVideo ? 'video' : isImage ? 'image' : 'document'}: ${fileName}`)
+    console.log(`Sending ${isVideo ? 'video' : isImage ? 'photo' : 'document'} to Telegram...`)
 
     // Upload to Telegram
     const response = await fetch(telegramUrl, {
       method: 'POST',
-      body: telegramFormData,
+      body: formData,
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      console.error('Telegram API error:', error)
-      throw new Error(`Telegram upload failed: ${error.description}`)
+      const errorText = await response.text()
+      console.error('Telegram API error:', errorText)
+      throw new Error(`Telegram upload failed: ${errorText}`)
     }
 
     const result = await response.json()
@@ -105,9 +112,13 @@ serve(async (req) => {
     if (isVideo) {
       telegramFile = result.result.video
     } else if (isImage) {
-      telegramFile = result.result.photo[result.result.photo.length - 1] // Get highest resolution
+      telegramFile = result.result.photo?.[result.result.photo.length - 1] // Get highest resolution
     } else {
       telegramFile = result.result.document
+    }
+
+    if (!telegramFile) {
+      throw new Error('Failed to get file information from Telegram response')
     }
 
     // Save file metadata to database
