@@ -48,12 +48,19 @@ const FileUpload = ({ onFileUpload }: FileUploadProps) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => {
-        const result = reader.result as string;
-        // Remove the data URL prefix (e.g., "data:image/png;base64,")
-        const base64 = result.split(',')[1];
-        resolve(base64);
+        try {
+          const result = reader.result as string;
+          // Remove the data URL prefix (e.g., "data:image/png;base64,")
+          const base64 = result.split(',')[1];
+          if (!base64) {
+            throw new Error('Failed to convert file to base64');
+          }
+          resolve(base64);
+        } catch (error) {
+          reject(new Error('Failed to process file'));
+        }
       };
-      reader.onerror = reject;
+      reader.onerror = () => reject(new Error('Failed to read file'));
       reader.readAsDataURL(file);
     });
   };
@@ -88,45 +95,71 @@ const FileUpload = ({ onFileUpload }: FileUploadProps) => {
         return;
       }
 
-      const uploadPromises = files.map(async (file) => {
-        console.log(`Processing file: ${file.name}, size: ${file.size}, type: ${file.type}`);
-        
-        // Convert file to base64
-        const fileBase64 = await fileToBase64(file);
-        
-        console.log(`File converted to base64, length: ${fileBase64.length}`);
+      const successfulUploads: File[] = [];
+      const failedUploads: string[] = [];
 
-        const { data: result, error } = await supabase.functions.invoke('telegram-upload', {
-          body: {
-            fileName: file.name,
-            fileSize: file.size,
-            fileType: file.type,
-            fileData: fileBase64,
-          },
+      for (const file of files) {
+        try {
+          console.log(`Processing file: ${file.name}, size: ${file.size}, type: ${file.type}`);
+          
+          // Check file size limits upfront
+          const isVideo = file.type?.startsWith('video/') || file.name.toLowerCase().match(/\.(mp4|avi|mov|mkv|webm|m4v)$/i);
+          const isImage = file.type?.startsWith('image/') || file.name.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i);
+          
+          const maxSize = isImage ? 10 * 1024 * 1024 : 50 * 1024 * 1024; // 10MB for images, 50MB for others
+          if (file.size > maxSize) {
+            throw new Error(`File "${file.name}" is too large. Maximum size is ${maxSize / 1024 / 1024}MB`);
+          }
+          
+          // Convert file to base64
+          const fileBase64 = await fileToBase64(file);
+          
+          console.log(`File converted to base64, length: ${fileBase64.length}`);
+
+          const { data: result, error } = await supabase.functions.invoke('telegram-upload', {
+            body: {
+              fileName: file.name,
+              fileSize: file.size,
+              fileType: file.type || 'application/octet-stream',
+              fileData: fileBase64,
+            },
+          });
+
+          if (error) {
+            console.error('Upload error:', error);
+            throw new Error(error.message || 'Upload failed');
+          }
+
+          if (!result?.success) {
+            console.error('Upload result error:', result);
+            throw new Error(result?.error || 'Upload failed');
+          }
+
+          console.log('Upload successful:', result);
+          successfulUploads.push(file);
+          
+        } catch (error: any) {
+          console.error(`Upload error for ${file.name}:`, error);
+          failedUploads.push(`${file.name}: ${error.message}`);
+        }
+      }
+
+      if (successfulUploads.length > 0) {
+        onFileUpload(successfulUploads);
+        toast({
+          title: "Upload Successful",
+          description: `${successfulUploads.length} file(s) uploaded to Telegram successfully!`,
         });
+      }
 
-        if (error) {
-          console.error('Upload error:', error);
-          throw new Error(error.message || 'Upload failed');
-        }
-
-        if (!result?.success) {
-          console.error('Upload result error:', result);
-          throw new Error(result?.error || 'Upload failed');
-        }
-
-        console.log('Upload successful:', result);
-        return result;
-      });
-
-      await Promise.all(uploadPromises);
+      if (failedUploads.length > 0) {
+        toast({
+          title: "Some Uploads Failed",
+          description: failedUploads.join('\n'),
+          variant: "destructive",
+        });
+      }
       
-      onFileUpload(files);
-      
-      toast({
-        title: "Upload Successful",
-        description: `${files.length} file(s) uploaded to Telegram successfully!`,
-      });
     } catch (error: any) {
       console.error('Upload error:', error);
       toast({
@@ -178,8 +211,11 @@ const FileUpload = ({ onFileUpload }: FileUploadProps) => {
           <h3 className="text-xl font-semibold text-gray-900 mb-2">
             {isUploading ? 'Uploading to Telegram...' : 'Drop files here or click to upload'}
           </h3>
-          <p className="text-gray-500 mb-4">
+          <p className="text-gray-500 mb-2">
             Files will be securely stored on your Telegram channel with unlimited space
+          </p>
+          <p className="text-xs text-gray-400 mb-4">
+            Max size: 10MB for images, 50MB for videos and documents
           </p>
           
           <Button 

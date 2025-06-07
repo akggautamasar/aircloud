@@ -57,40 +57,81 @@ serve(async (req) => {
 
     console.log(`Downloading file: ${fileName} (${fileId})`)
 
-    // Get file info from Telegram
+    // Get file info from Telegram with timeout
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+
     const fileInfoUrl = `https://api.telegram.org/bot${config.bot_token}/getFile?file_id=${fileId}`
-    const fileInfoResponse = await fetch(fileInfoUrl)
+    const fileInfoResponse = await fetch(fileInfoUrl, {
+      signal: controller.signal
+    })
     
+    clearTimeout(timeoutId)
+
     if (!fileInfoResponse.ok) {
       const errorText = await fileInfoResponse.text()
       console.error('Telegram getFile error:', errorText)
+      
+      try {
+        const errorData = JSON.parse(errorText)
+        if (errorData.description?.includes('file is too big')) {
+          throw new Error('File is too large to download. Telegram limits file downloads to 20MB.')
+        }
+        if (errorData.description?.includes('Bad Request')) {
+          throw new Error(`File not found or access denied: ${errorData.description}`)
+        }
+      } catch (parseError) {
+        // If we can't parse the error, use the raw text
+      }
+      
       throw new Error(`Failed to get file info: ${errorText}`)
     }
 
     const fileInfo = await fileInfoResponse.json()
     
     if (!fileInfo.ok) {
+      if (fileInfo.description?.includes('file is too big')) {
+        throw new Error('File is too large to download. Telegram limits file downloads to 20MB.')
+      }
       throw new Error(`Telegram API error: ${fileInfo.description}`)
     }
     
     const filePath = fileInfo.result.file_path
+    if (!filePath) {
+      throw new Error('File path not available')
+    }
 
-    // Download file from Telegram
+    // Download file from Telegram with timeout
+    const downloadController = new AbortController()
+    const downloadTimeoutId = setTimeout(() => downloadController.abort(), 60000) // 60 second timeout
+
     const downloadUrl = `https://api.telegram.org/file/bot${config.bot_token}/${filePath}`
-    const downloadResponse = await fetch(downloadUrl)
+    const downloadResponse = await fetch(downloadUrl, {
+      signal: downloadController.signal
+    })
     
+    clearTimeout(downloadTimeoutId)
+
     if (!downloadResponse.ok) {
-      throw new Error('Failed to download file from Telegram')
+      throw new Error(`Failed to download file from Telegram: ${downloadResponse.status} ${downloadResponse.statusText}`)
     }
 
     const fileData = await downloadResponse.arrayBuffer()
     
-    // Convert to base64 for transport
-    const bytes = new Uint8Array(fileData)
-    let binary = ''
-    for (let i = 0; i < bytes.byteLength; i++) {
-      binary += String.fromCharCode(bytes[i])
+    if (fileData.byteLength === 0) {
+      throw new Error('Downloaded file is empty')
     }
+
+    // Convert to base64 for transport with better memory handling
+    const bytes = new Uint8Array(fileData)
+    const chunkSize = 8192
+    let binary = ''
+    
+    for (let i = 0; i < bytes.byteLength; i += chunkSize) {
+      const chunk = bytes.slice(i, i + chunkSize)
+      binary += String.fromCharCode.apply(null, Array.from(chunk))
+    }
+    
     const base64Data = btoa(binary)
 
     console.log(`File downloaded successfully, size: ${fileData.byteLength} bytes`)
