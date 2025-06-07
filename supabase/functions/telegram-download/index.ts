@@ -57,9 +57,10 @@ serve(async (req) => {
 
     console.log(`Downloading file: ${fileName} (${fileId})`)
 
-    // Get file info from Telegram with timeout
+    // For large files, we'll return a streaming URL instead of downloading the file
+    // First check if file is too big by trying to get file info
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout for file info
 
     const fileInfoUrl = `https://api.telegram.org/bot${config.bot_token}/getFile?file_id=${fileId}`
     const fileInfoResponse = await fetch(fileInfoUrl, {
@@ -75,7 +76,23 @@ serve(async (req) => {
       try {
         const errorData = JSON.parse(errorText)
         if (errorData.description?.includes('file is too big')) {
-          throw new Error('File is too large to download. Telegram limits file downloads to 20MB.')
+          // For large files, return a streaming URL
+          const streamUrl = `https://api.telegram.org/file/bot${config.bot_token}/${fileId}`
+          return new Response(
+            JSON.stringify({ 
+              success: true,
+              isStreamUrl: true,
+              streamUrl: streamUrl,
+              fileName: fileName,
+              message: 'File is large, using streaming URL'
+            }),
+            { 
+              headers: { 
+                ...corsHeaders, 
+                'Content-Type': 'application/json' 
+              } 
+            }
+          )
         }
         if (errorData.description?.includes('Bad Request')) {
           throw new Error(`File not found or access denied: ${errorData.description}`)
@@ -91,7 +108,23 @@ serve(async (req) => {
     
     if (!fileInfo.ok) {
       if (fileInfo.description?.includes('file is too big')) {
-        throw new Error('File is too large to download. Telegram limits file downloads to 20MB.')
+        // For large files, return a streaming URL
+        const streamUrl = `https://api.telegram.org/file/bot${config.bot_token}/${fileId}`
+        return new Response(
+          JSON.stringify({ 
+            success: true,
+            isStreamUrl: true,
+            streamUrl: streamUrl,
+            fileName: fileName,
+            message: 'File is large, using streaming URL'
+          }),
+          { 
+            headers: { 
+              ...corsHeaders, 
+              'Content-Type': 'application/json' 
+            } 
+          }
+        )
       }
       throw new Error(`Telegram API error: ${fileInfo.description}`)
     }
@@ -101,9 +134,32 @@ serve(async (req) => {
       throw new Error('File path not available')
     }
 
-    // Download file from Telegram with timeout
+    const fileSize = fileInfo.result.file_size || 0
+    
+    // If file is larger than 20MB, use streaming
+    if (fileSize > 20 * 1024 * 1024) {
+      const streamUrl = `https://api.telegram.org/file/bot${config.bot_token}/${filePath}`
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          isStreamUrl: true,
+          streamUrl: streamUrl,
+          fileName: fileName,
+          fileSize: fileSize,
+          message: 'Large file, using streaming URL'
+        }),
+        { 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json' 
+          } 
+        }
+      )
+    }
+
+    // Download smaller files directly
     const downloadController = new AbortController()
-    const downloadTimeoutId = setTimeout(() => downloadController.abort(), 60000) // 60 second timeout
+    const downloadTimeoutId = setTimeout(() => downloadController.abort(), 30000) // 30 second timeout
 
     const downloadUrl = `https://api.telegram.org/file/bot${config.bot_token}/${filePath}`
     const downloadResponse = await fetch(downloadUrl, {

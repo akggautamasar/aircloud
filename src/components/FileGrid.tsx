@@ -1,4 +1,3 @@
-
 import { File, Download, Archive, Play, Image, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -25,7 +24,7 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [downloading, setDownloading] = useState<number | null>(null);
-  const [viewingFile, setViewingFile] = useState<{ url: string; type: string; name: string } | null>(null);
+  const [viewingFile, setViewingFile] = useState<{ url: string; type: string; name: string; isStream?: boolean } | null>(null);
 
   const getFileIcon = (type: string, name: string) => {
     const iconClass = "w-8 h-8";
@@ -81,7 +80,18 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
         throw new Error(result?.error || 'Download failed');
       }
 
-      // Convert base64 to blob and trigger download
+      // Handle streaming URL for large files
+      if (result.isStreamUrl) {
+        // Open the streaming URL in a new tab
+        window.open(result.streamUrl, '_blank');
+        toast({
+          title: "Large File",
+          description: "File opened in new tab due to size limitations",
+        });
+        return;
+      }
+
+      // Handle regular download for smaller files
       const binaryString = atob(result.fileData);
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
@@ -140,7 +150,18 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
         throw new Error(result?.error || 'Failed to load file');
       }
 
-      // Convert base64 to blob URL for viewing
+      // Handle streaming URL for large files
+      if (result.isStreamUrl) {
+        setViewingFile({ 
+          url: result.streamUrl, 
+          type: file.type, 
+          name: file.name,
+          isStream: true 
+        });
+        return;
+      }
+
+      // Handle regular viewing for smaller files
       const binaryString = atob(result.fileData);
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
@@ -162,7 +183,7 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
   };
 
   const closeViewer = () => {
-    if (viewingFile?.url) {
+    if (viewingFile?.url && !viewingFile.isStream) {
       window.URL.revokeObjectURL(viewingFile.url);
     }
     setViewingFile(null);
@@ -221,12 +242,14 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
                     src={viewingFile.url} 
                     alt={viewingFile.name}
                     className="max-w-full max-h-96 object-contain mx-auto"
+                    crossOrigin="anonymous"
                   />
                 ) : viewingFile.type.startsWith('video/') ? (
                   <video 
                     src={viewingFile.url} 
                     controls
                     className="max-w-full max-h-96 mx-auto"
+                    crossOrigin="anonymous"
                   >
                     Your browser does not support the video tag.
                   </video>
@@ -295,12 +318,14 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
                   src={viewingFile.url} 
                   alt={viewingFile.name}
                   className="max-w-full max-h-96 object-contain mx-auto"
+                  crossOrigin="anonymous"
                 />
               ) : viewingFile.type.startsWith('video/') ? (
                 <video 
                   src={viewingFile.url} 
                   controls
                   className="max-w-full max-h-96 mx-auto"
+                  crossOrigin="anonymous"
                 >
                   Your browser does not support the video tag.
                 </video>
