@@ -62,12 +62,30 @@ serve(async (req) => {
     // Prepare file for Telegram upload
     const telegramFormData = new FormData()
     telegramFormData.append('chat_id', config.channel_id)
-    telegramFormData.append('document', file)
-    telegramFormData.append('caption', `📎 ${fileName}\n💾 Size: ${(fileSize / 1024 / 1024).toFixed(2)} MB\n⏰ Uploaded: ${new Date().toLocaleString()}`)
+    
+    // Use appropriate Telegram API endpoint based on file type
+    const isVideo = fileType?.startsWith('video/') || fileName.toLowerCase().match(/\.(mp4|avi|mov|mkv|webm|m4v)$/i)
+    const isImage = fileType?.startsWith('image/') || fileName.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i)
+    
+    let telegramUrl = `https://api.telegram.org/bot${config.bot_token}/sendDocument`
+    
+    if (isVideo) {
+      telegramFormData.append('video', file)
+      telegramUrl = `https://api.telegram.org/bot${config.bot_token}/sendVideo`
+      telegramFormData.append('supports_streaming', 'true')
+    } else if (isImage) {
+      telegramFormData.append('photo', file)
+      telegramUrl = `https://api.telegram.org/bot${config.bot_token}/sendPhoto`
+    } else {
+      telegramFormData.append('document', file)
+    }
+    
+    const caption = `📎 ${fileName}\n💾 Size: ${(fileSize / 1024 / 1024).toFixed(2)} MB\n⏰ Uploaded: ${new Date().toLocaleString()}`
+    telegramFormData.append('caption', caption)
+
+    console.log(`Uploading ${isVideo ? 'video' : isImage ? 'image' : 'document'}: ${fileName}`)
 
     // Upload to Telegram
-    const telegramUrl = `https://api.telegram.org/bot${config.bot_token}/sendDocument`
-    
     const response = await fetch(telegramUrl, {
       method: 'POST',
       body: telegramFormData,
@@ -75,11 +93,22 @@ serve(async (req) => {
 
     if (!response.ok) {
       const error = await response.json()
+      console.error('Telegram API error:', error)
       throw new Error(`Telegram upload failed: ${error.description}`)
     }
 
     const result = await response.json()
-    const telegramFile = result.result.document
+    console.log('Telegram upload successful:', result.result.message_id)
+    
+    // Get the appropriate file object based on type
+    let telegramFile
+    if (isVideo) {
+      telegramFile = result.result.video
+    } else if (isImage) {
+      telegramFile = result.result.photo[result.result.photo.length - 1] // Get highest resolution
+    } else {
+      telegramFile = result.result.document
+    }
 
     // Save file metadata to database
     const { error: dbError } = await supabaseClient
@@ -105,7 +134,8 @@ serve(async (req) => {
         fileId: telegramFile.file_id,
         messageId: result.result.message_id,
         fileName: fileName,
-        fileSize: fileSize
+        fileSize: fileSize,
+        fileType: isVideo ? 'video' : isImage ? 'image' : 'document'
       }),
       { 
         headers: { 

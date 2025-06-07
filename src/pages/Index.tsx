@@ -53,8 +53,9 @@ const Index = () => {
         id: file.id,
         name: file.file_name,
         size: file.file_size ? `${(file.file_size / (1024 * 1024)).toFixed(1)} MB` : 'Unknown',
-        type: file.file_type?.split('/')[1] || 'unknown',
+        type: file.file_type || 'unknown',
         uploadedAt: new Date(file.uploaded_at).toLocaleDateString(),
+        telegram_file_id: file.telegram_file_id,
       }));
 
       setTelegramFiles(formattedFiles);
