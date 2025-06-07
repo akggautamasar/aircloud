@@ -47,19 +47,23 @@ serve(async (req) => {
       throw new Error('Telegram not configured')
     }
 
-    // Parse form data
-    const formData = await req.formData()
-    const file = formData.get('file') as File
+    // Parse request body
+    const body = await req.json()
+    const { fileName, fileSize, fileType, fileData } = body
     
-    if (!file) {
-      throw new Error('No file provided')
+    if (!fileName || !fileData) {
+      throw new Error('No file data provided')
     }
+
+    // Convert base64 back to file for Telegram upload
+    const fileBuffer = Uint8Array.from(atob(fileData), c => c.charCodeAt(0))
+    const file = new File([fileBuffer], fileName, { type: fileType })
 
     // Prepare file for Telegram upload
     const telegramFormData = new FormData()
     telegramFormData.append('chat_id', config.channel_id)
     telegramFormData.append('document', file)
-    telegramFormData.append('caption', `📎 ${file.name}\n💾 Size: ${(file.size / 1024 / 1024).toFixed(2)} MB\n⏰ Uploaded: ${new Date().toLocaleString()}`)
+    telegramFormData.append('caption', `📎 ${fileName}\n💾 Size: ${(fileSize / 1024 / 1024).toFixed(2)} MB\n⏰ Uploaded: ${new Date().toLocaleString()}`)
 
     // Upload to Telegram
     const telegramUrl = `https://api.telegram.org/bot${config.bot_token}/sendDocument`
@@ -82,9 +86,9 @@ serve(async (req) => {
       .from('telegram_files')
       .insert({
         user_id: user.id,
-        file_name: file.name,
-        file_size: file.size,
-        file_type: file.type || 'unknown',
+        file_name: fileName,
+        file_size: fileSize,
+        file_type: fileType || 'unknown',
         telegram_file_id: telegramFile.file_id,
         telegram_message_id: result.result.message_id,
         channel_id: config.channel_id,
@@ -100,8 +104,8 @@ serve(async (req) => {
         success: true,
         fileId: telegramFile.file_id,
         messageId: result.result.message_id,
-        fileName: file.name,
-        fileSize: file.size
+        fileName: fileName,
+        fileSize: fileSize
       }),
       { 
         headers: { 

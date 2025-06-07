@@ -1,4 +1,3 @@
-
 import { Upload, CloudUpload } from "lucide-react";
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
@@ -75,25 +74,29 @@ const FileUpload = ({ onFileUpload }: FileUploadProps) => {
       }
 
       const uploadPromises = files.map(async (file) => {
-        const formData = new FormData();
-        formData.append('file', file);
+        // Convert file to base64 for transmission
+        const fileBuffer = await file.arrayBuffer();
+        const fileBase64 = btoa(String.fromCharCode(...new Uint8Array(fileBuffer)));
 
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        const response = await fetch('/functions/v1/telegram-upload', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session?.access_token}`,
+        const { data: result, error } = await supabase.functions.invoke('telegram-upload', {
+          body: {
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type,
+            fileData: fileBase64,
           },
-          body: formData,
         });
 
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || 'Upload failed');
+        if (error) {
+          console.error('Upload error:', error);
+          throw new Error(error.message || 'Upload failed');
         }
 
-        return response.json();
+        if (!result?.success) {
+          throw new Error(result?.error || 'Upload failed');
+        }
+
+        return result;
       });
 
       await Promise.all(uploadPromises);
@@ -105,6 +108,7 @@ const FileUpload = ({ onFileUpload }: FileUploadProps) => {
         description: `${files.length} file(s) uploaded to Telegram successfully!`,
       });
     } catch (error: any) {
+      console.error('Upload error:', error);
       toast({
         title: "Upload Failed",
         description: error.message || "Failed to upload files to Telegram",
