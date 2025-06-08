@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import FileUpload from "@/components/FileUpload";
@@ -31,6 +30,28 @@ const Index = () => {
       navigate('/auth');
     } else {
       fetchTelegramFiles();
+      
+      // Set up real-time subscription for new telegram files
+      const channel = supabase
+        .channel('telegram_files_changes')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'telegram_files',
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload) => {
+            console.log('New file uploaded via Telegram:', payload)
+            fetchTelegramFiles(); // Refresh the file list
+          }
+        )
+        .subscribe()
+
+      return () => {
+        supabase.removeChannel(channel);
+      }
     }
   }, [user, navigate]);
 
@@ -38,6 +59,7 @@ const Index = () => {
     if (!user) return;
 
     try {
+      console.log('Fetching telegram files for user:', user.id)
       const { data, error } = await supabase
         .from('telegram_files')
         .select('*')
@@ -48,6 +70,8 @@ const Index = () => {
         console.error('Error fetching files:', error);
         return;
       }
+
+      console.log('Fetched files:', data)
 
       const formattedFiles = data.map(file => ({
         id: file.id,
