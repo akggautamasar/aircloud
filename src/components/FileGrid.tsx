@@ -1,3 +1,4 @@
+
 import { File, Download, Archive, Play, Image, Eye, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -214,7 +215,9 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
                   <div className="flex items-center space-x-2">
                     <h4 className="font-medium text-gray-900">{file.name}</h4>
                     {isLargeFile(file.size) && (
-                      <AlertCircle className="w-4 h-4 text-orange-500" title="Large file - may require Telegram client" />
+                      <span title="Large file - may require Telegram client">
+                        <AlertCircle className="w-4 h-4 text-orange-500" />
+                      </span>
                     )}
                   </div>
                   <p className="text-sm text-gray-500">{file.size} • {file.uploadedAt}</p>
@@ -304,7 +307,9 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
               <div className="flex items-center justify-center h-16 relative">
                 {getFileIcon(file.type, file.name)}
                 {isLargeFile(file.size) && (
-                  <AlertCircle className="w-4 h-4 text-orange-500 absolute -top-1 -right-1" title="Large file - may require Telegram client" />
+                  <span title="Large file - may require Telegram client" className="absolute -top-1 -right-1">
+                    <AlertCircle className="w-4 h-4 text-orange-500" />
+                  </span>
                 )}
               </div>
               
