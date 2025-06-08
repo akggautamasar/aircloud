@@ -1,3 +1,4 @@
+
 import { File, Download, Archive, Play, Image, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -65,6 +66,8 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
     setDownloading(file.id);
     
     try {
+      console.log('Starting download for file:', file.name, 'with ID:', file.telegram_file_id);
+      
       const { data: result, error } = await supabase.functions.invoke('telegram-download', {
         body: {
           fileId: file.telegram_file_id,
@@ -73,45 +76,59 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
       });
 
       if (error) {
+        console.error('Supabase function error:', error);
         throw new Error(error.message || 'Download failed');
       }
 
       if (!result?.success) {
+        console.error('Download result error:', result);
         throw new Error(result?.error || 'Download failed');
       }
 
-      // Handle streaming URL for large files
+      console.log('Download result:', result);
+
+      // Handle streaming URL for large files or fallback
       if (result.isStreamUrl) {
-        // Open the streaming URL in a new tab
-        window.open(result.streamUrl, '_blank');
+        console.log('Opening stream URL:', result.streamUrl);
+        // Create a temporary link to download the file
+        const a = document.createElement('a');
+        a.href = result.streamUrl;
+        a.download = file.name;
+        a.target = '_blank';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
         toast({
-          title: "Large File",
-          description: "File opened in new tab due to size limitations",
+          title: "Download Started",
+          description: "File download has been initiated",
         });
         return;
       }
 
       // Handle regular download for smaller files
-      const binaryString = atob(result.fileData);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      
-      const blob = new Blob([bytes]);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = file.name;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      if (result.fileData) {
+        const binaryString = atob(result.fileData);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        
+        const blob = new Blob([bytes]);
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = file.name;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
 
-      toast({
-        title: "Success",
-        description: "File downloaded successfully!",
-      });
+        toast({
+          title: "Success",
+          description: "File downloaded successfully!",
+        });
+      }
     } catch (error: any) {
       console.error('Download error:', error);
       toast({
@@ -135,6 +152,8 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
     }
 
     try {
+      console.log('Starting view for file:', file.name, 'with ID:', file.telegram_file_id);
+      
       const { data: result, error } = await supabase.functions.invoke('telegram-download', {
         body: {
           fileId: file.telegram_file_id,
@@ -143,15 +162,20 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
       });
 
       if (error) {
+        console.error('Supabase function error:', error);
         throw new Error(error.message || 'Failed to load file');
       }
 
       if (!result?.success) {
+        console.error('View result error:', result);
         throw new Error(result?.error || 'Failed to load file');
       }
 
+      console.log('View result:', result);
+
       // Handle streaming URL for large files
       if (result.isStreamUrl) {
+        console.log('Using stream URL for viewing:', result.streamUrl);
         setViewingFile({ 
           url: result.streamUrl, 
           type: file.type, 
@@ -162,16 +186,18 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
       }
 
       // Handle regular viewing for smaller files
-      const binaryString = atob(result.fileData);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
+      if (result.fileData) {
+        const binaryString = atob(result.fileData);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        
+        const blob = new Blob([bytes], { type: file.type });
+        const url = window.URL.createObjectURL(blob);
+        
+        setViewingFile({ url, type: file.type, name: file.name });
       }
-      
-      const blob = new Blob([bytes], { type: file.type });
-      const url = window.URL.createObjectURL(blob);
-      
-      setViewingFile({ url, type: file.type, name: file.name });
     } catch (error: any) {
       console.error('View error:', error);
       toast({
@@ -242,14 +268,28 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
                     src={viewingFile.url} 
                     alt={viewingFile.name}
                     className="max-w-full max-h-96 object-contain mx-auto"
-                    crossOrigin="anonymous"
+                    onError={(e) => {
+                      console.error('Image load error:', e);
+                      toast({
+                        title: "Image Load Error",
+                        description: "Failed to load image",
+                        variant: "destructive",
+                      });
+                    }}
                   />
                 ) : viewingFile.type.startsWith('video/') ? (
                   <video 
                     src={viewingFile.url} 
                     controls
                     className="max-w-full max-h-96 mx-auto"
-                    crossOrigin="anonymous"
+                    onError={(e) => {
+                      console.error('Video load error:', e);
+                      toast({
+                        title: "Video Load Error",
+                        description: "Failed to load video",
+                        variant: "destructive",
+                      });
+                    }}
                   >
                     Your browser does not support the video tag.
                   </video>
@@ -318,14 +358,28 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
                   src={viewingFile.url} 
                   alt={viewingFile.name}
                   className="max-w-full max-h-96 object-contain mx-auto"
-                  crossOrigin="anonymous"
+                  onError={(e) => {
+                    console.error('Image load error:', e);
+                    toast({
+                      title: "Image Load Error",
+                      description: "Failed to load image",
+                      variant: "destructive",
+                    });
+                  }}
                 />
               ) : viewingFile.type.startsWith('video/') ? (
                 <video 
                   src={viewingFile.url} 
                   controls
                   className="max-w-full max-h-96 mx-auto"
-                  crossOrigin="anonymous"
+                  onError={(e) => {
+                    console.error('Video load error:', e);
+                    toast({
+                      title: "Video Load Error",
+                      description: "Failed to load video",
+                      variant: "destructive",
+                    });
+                  }}
                 >
                   Your browser does not support the video tag.
                 </video>

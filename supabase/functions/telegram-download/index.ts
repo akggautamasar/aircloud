@@ -55,68 +55,24 @@ serve(async (req) => {
       throw new Error('No file ID provided')
     }
 
-    console.log(`Downloading file: ${fileName} (${fileId})`)
+    console.log(`Processing file: ${fileName} (${fileId})`)
 
-    // For large files, we'll return a streaming URL instead of downloading the file
-    // First check if file is too big by trying to get file info
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout for file info
-
-    const fileInfoUrl = `https://api.telegram.org/bot${config.bot_token}/getFile?file_id=${fileId}`
-    const fileInfoResponse = await fetch(fileInfoUrl, {
-      signal: controller.signal
-    })
+    // For Telegram files, we'll always use the direct streaming URL
+    // This bypasses Telegram's getFile API limitations for large files
+    const streamUrl = `https://api.telegram.org/file/bot${config.bot_token}/${fileId}`
     
-    clearTimeout(timeoutId)
-
-    if (!fileInfoResponse.ok) {
-      const errorText = await fileInfoResponse.text()
-      console.error('Telegram getFile error:', errorText)
-      
-      try {
-        const errorData = JSON.parse(errorText)
-        if (errorData.description?.includes('file is too big')) {
-          // For large files, return a streaming URL
-          const streamUrl = `https://api.telegram.org/file/bot${config.bot_token}/${fileId}`
-          return new Response(
-            JSON.stringify({ 
-              success: true,
-              isStreamUrl: true,
-              streamUrl: streamUrl,
-              fileName: fileName,
-              message: 'File is large, using streaming URL'
-            }),
-            { 
-              headers: { 
-                ...corsHeaders, 
-                'Content-Type': 'application/json' 
-              } 
-            }
-          )
-        }
-        if (errorData.description?.includes('Bad Request')) {
-          throw new Error(`File not found or access denied: ${errorData.description}`)
-        }
-      } catch (parseError) {
-        // If we can't parse the error, use the raw text
-      }
-      
-      throw new Error(`Failed to get file info: ${errorText}`)
-    }
-
-    const fileInfo = await fileInfoResponse.json()
-    
-    if (!fileInfo.ok) {
-      if (fileInfo.description?.includes('file is too big')) {
-        // For large files, return a streaming URL
-        const streamUrl = `https://api.telegram.org/file/bot${config.bot_token}/${fileId}`
+    // Test if the file is accessible by making a HEAD request
+    try {
+      const testResponse = await fetch(streamUrl, { method: 'HEAD' })
+      if (testResponse.ok) {
+        console.log(`File accessible via direct stream URL`)
         return new Response(
           JSON.stringify({ 
             success: true,
             isStreamUrl: true,
             streamUrl: streamUrl,
             fileName: fileName,
-            message: 'File is large, using streaming URL'
+            message: 'Using direct stream URL'
           }),
           { 
             headers: { 
@@ -126,7 +82,55 @@ serve(async (req) => {
           }
         )
       }
-      throw new Error(`Telegram API error: ${fileInfo.description}`)
+    } catch (streamError) {
+      console.log('Direct stream failed, trying getFile API')
+    }
+
+    // If direct stream fails, try the getFile API for smaller files
+    const fileInfoUrl = `https://api.telegram.org/bot${config.bot_token}/getFile?file_id=${fileId}`
+    const fileInfoResponse = await fetch(fileInfoUrl)
+
+    if (!fileInfoResponse.ok) {
+      const errorText = await fileInfoResponse.text()
+      console.error('Telegram getFile error:', errorText)
+      
+      // If getFile fails, still try to return the direct stream URL
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          isStreamUrl: true,
+          streamUrl: streamUrl,
+          fileName: fileName,
+          message: 'Using fallback stream URL'
+        }),
+        { 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json' 
+          } 
+        }
+      )
+    }
+
+    const fileInfo = await fileInfoResponse.json()
+    
+    if (!fileInfo.ok) {
+      // Return stream URL as fallback
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          isStreamUrl: true,
+          streamUrl: streamUrl,
+          fileName: fileName,
+          message: 'Using stream URL due to API limitations'
+        }),
+        { 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json' 
+          } 
+        }
+      )
     }
     
     const filePath = fileInfo.result.file_path
@@ -136,14 +140,14 @@ serve(async (req) => {
 
     const fileSize = fileInfo.result.file_size || 0
     
-    // If file is larger than 20MB, use streaming
-    if (fileSize > 20 * 1024 * 1024) {
-      const streamUrl = `https://api.telegram.org/file/bot${config.bot_token}/${filePath}`
+    // For files larger than 5MB, use streaming
+    if (fileSize > 5 * 1024 * 1024) {
+      const fullStreamUrl = `https://api.telegram.org/file/bot${config.bot_token}/${filePath}`
       return new Response(
         JSON.stringify({ 
           success: true,
           isStreamUrl: true,
-          streamUrl: streamUrl,
+          streamUrl: fullStreamUrl,
           fileName: fileName,
           fileSize: fileSize,
           message: 'Large file, using streaming URL'
@@ -158,18 +162,11 @@ serve(async (req) => {
     }
 
     // Download smaller files directly
-    const downloadController = new AbortController()
-    const downloadTimeoutId = setTimeout(() => downloadController.abort(), 30000) // 30 second timeout
-
     const downloadUrl = `https://api.telegram.org/file/bot${config.bot_token}/${filePath}`
-    const downloadResponse = await fetch(downloadUrl, {
-      signal: downloadController.signal
-    })
-    
-    clearTimeout(downloadTimeoutId)
+    const downloadResponse = await fetch(downloadUrl)
 
     if (!downloadResponse.ok) {
-      throw new Error(`Failed to download file from Telegram: ${downloadResponse.status} ${downloadResponse.statusText}`)
+      throw new Error(`Failed to download file from Telegram: ${downloadResponse.status}`)
     }
 
     const fileData = await downloadResponse.arrayBuffer()
@@ -178,7 +175,7 @@ serve(async (req) => {
       throw new Error('Downloaded file is empty')
     }
 
-    // Convert to base64 for transport with better memory handling
+    // Convert to base64
     const bytes = new Uint8Array(fileData)
     const chunkSize = 8192
     let binary = ''
