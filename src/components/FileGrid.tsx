@@ -1,4 +1,4 @@
-import { File, Download, Archive, Play, Image, Eye } from "lucide-react";
+import { File, Download, Archive, Play, Image, Eye, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useState } from "react";
@@ -86,27 +86,32 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
 
       console.log('Download result:', result);
 
-      // Always use streaming URL now
-      if (result.streamUrl) {
-        console.log('Starting download from stream URL:', result.streamUrl);
-        
-        // Create a temporary link to download the file
-        const a = document.createElement('a');
-        a.href = result.streamUrl;
-        a.download = file.name;
-        a.target = '_blank';
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        
+      // Check if this is a large file URL
+      if (result.streamUrl && result.streamUrl.startsWith('tg-large-file://')) {
         toast({
-          title: "Download Started",
-          description: "File download has been initiated",
+          title: "Large File Detected",
+          description: "This file is too large to download directly. Please use a Telegram client to access it.",
+          variant: "destructive",
         });
-      } else {
-        throw new Error('No download URL provided');
+        return;
       }
+
+      console.log('Starting download from stream URL:', result.streamUrl);
+      
+      // Create a temporary link to download the file
+      const a = document.createElement('a');
+      a.href = result.streamUrl;
+      a.download = file.name;
+      a.target = '_blank';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      
+      toast({
+        title: "Download Started",
+        description: "File download has been initiated",
+      });
     } catch (error: any) {
       console.error('Download error:', error);
       toast({
@@ -151,18 +156,23 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
 
       console.log('View result:', result);
 
-      // Always use streaming URL for viewing
-      if (result.streamUrl) {
-        console.log('Using stream URL for viewing:', result.streamUrl);
-        setViewingFile({ 
-          url: result.streamUrl, 
-          type: file.type, 
-          name: file.name,
-          isStream: true 
+      // Check if this is a large file URL
+      if (result.streamUrl && result.streamUrl.startsWith('tg-large-file://')) {
+        toast({
+          title: "Large File Detected",
+          description: "This file is too large to view directly. Please use a Telegram client to access it.",
+          variant: "destructive",
         });
-      } else {
-        throw new Error('No stream URL provided');
+        return;
       }
+
+      console.log('Using stream URL for viewing:', result.streamUrl);
+      setViewingFile({ 
+        url: result.streamUrl, 
+        type: file.type, 
+        name: file.name,
+        isStream: true 
+      });
     } catch (error: any) {
       console.error('View error:', error);
       toast({
@@ -177,6 +187,20 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
     setViewingFile(null);
   };
 
+  // Check if file is likely too large (over 20MB based on size string)
+  const isLargeFile = (sizeString: string) => {
+    const match = sizeString.match(/(\d+\.?\d*)\s*(MB|GB)/i);
+    if (!match) return false;
+    
+    const size = parseFloat(match[1]);
+    const unit = match[2].toUpperCase();
+    
+    if (unit === 'GB') return true;
+    if (unit === 'MB' && size > 20) return true;
+    
+    return false;
+  };
+
   if (viewMode === 'list') {
     return (
       <div className="space-y-2">
@@ -187,12 +211,17 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
               <div className="flex items-center space-x-4">
                 {getFileIcon(file.type, file.name)}
                 <div>
-                  <h4 className="font-medium text-gray-900">{file.name}</h4>
+                  <div className="flex items-center space-x-2">
+                    <h4 className="font-medium text-gray-900">{file.name}</h4>
+                    {isLargeFile(file.size) && (
+                      <AlertCircle className="w-4 h-4 text-orange-500" title="Large file - may require Telegram client" />
+                    )}
+                  </div>
                   <p className="text-sm text-gray-500">{file.size} • {file.uploadedAt}</p>
                 </div>
               </div>
               <div className="flex items-center space-x-2">
-                {isViewable(file.type, file.name) && (
+                {isViewable(file.type, file.name) && !isLargeFile(file.size) && (
                   <Button variant="outline" size="sm" onClick={() => handleView(file)}>
                     <Eye className="w-4 h-4" />
                   </Button>
@@ -272,8 +301,11 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
         {files.map((file) => (
           <Card key={file.id} className="p-4 hover:shadow-lg transition-all duration-200 hover:scale-105 group">
             <div className="space-y-3">
-              <div className="flex items-center justify-center h-16">
+              <div className="flex items-center justify-center h-16 relative">
                 {getFileIcon(file.type, file.name)}
+                {isLargeFile(file.size) && (
+                  <AlertCircle className="w-4 h-4 text-orange-500 absolute -top-1 -right-1" title="Large file - may require Telegram client" />
+                )}
               </div>
               
               <div className="text-center">
@@ -283,7 +315,7 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
               </div>
               
               <div className="flex justify-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                {isViewable(file.type, file.name) && (
+                {isViewable(file.type, file.name) && !isLargeFile(file.size) && (
                   <Button variant="outline" size="sm" onClick={() => handleView(file)}>
                     <Eye className="w-4 h-4" />
                   </Button>
