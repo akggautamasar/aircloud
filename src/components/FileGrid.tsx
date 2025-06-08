@@ -1,4 +1,3 @@
-
 import { File, Download, Archive, Play, Image, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -87,14 +86,16 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
 
       console.log('Download result:', result);
 
-      // Handle streaming URL for large files or fallback
-      if (result.isStreamUrl) {
-        console.log('Opening stream URL:', result.streamUrl);
+      // Always use streaming URL now
+      if (result.streamUrl) {
+        console.log('Starting download from stream URL:', result.streamUrl);
+        
         // Create a temporary link to download the file
         const a = document.createElement('a');
         a.href = result.streamUrl;
         a.download = file.name;
         a.target = '_blank';
+        a.style.display = 'none';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -103,31 +104,8 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
           title: "Download Started",
           description: "File download has been initiated",
         });
-        return;
-      }
-
-      // Handle regular download for smaller files
-      if (result.fileData) {
-        const binaryString = atob(result.fileData);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        
-        const blob = new Blob([bytes]);
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = file.name;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-
-        toast({
-          title: "Success",
-          description: "File downloaded successfully!",
-        });
+      } else {
+        throw new Error('No download URL provided');
       }
     } catch (error: any) {
       console.error('Download error:', error);
@@ -173,8 +151,8 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
 
       console.log('View result:', result);
 
-      // Handle streaming URL for large files
-      if (result.isStreamUrl) {
+      // Always use streaming URL for viewing
+      if (result.streamUrl) {
         console.log('Using stream URL for viewing:', result.streamUrl);
         setViewingFile({ 
           url: result.streamUrl, 
@@ -182,21 +160,8 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
           name: file.name,
           isStream: true 
         });
-        return;
-      }
-
-      // Handle regular viewing for smaller files
-      if (result.fileData) {
-        const binaryString = atob(result.fileData);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        
-        const blob = new Blob([bytes], { type: file.type });
-        const url = window.URL.createObjectURL(blob);
-        
-        setViewingFile({ url, type: file.type, name: file.name });
+      } else {
+        throw new Error('No stream URL provided');
       }
     } catch (error: any) {
       console.error('View error:', error);
@@ -209,9 +174,6 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
   };
 
   const closeViewer = () => {
-    if (viewingFile?.url && !viewingFile.isStream) {
-      window.URL.revokeObjectURL(viewingFile.url);
-    }
     setViewingFile(null);
   };
 
@@ -282,11 +244,12 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
                     src={viewingFile.url} 
                     controls
                     className="max-w-full max-h-96 mx-auto"
+                    preload="metadata"
                     onError={(e) => {
                       console.error('Video load error:', e);
                       toast({
                         title: "Video Load Error",
-                        description: "Failed to load video",
+                        description: "Failed to load video. Try downloading instead.",
                         variant: "destructive",
                       });
                     }}
@@ -372,11 +335,12 @@ const FileGrid = ({ files, viewMode }: FileGridProps) => {
                   src={viewingFile.url} 
                   controls
                   className="max-w-full max-h-96 mx-auto"
+                  preload="metadata"
                   onError={(e) => {
                     console.error('Video load error:', e);
                     toast({
                       title: "Video Load Error",
-                      description: "Failed to load video",
+                      description: "Failed to load video. Try downloading instead.",
                       variant: "destructive",
                     });
                   }}
