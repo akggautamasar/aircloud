@@ -10,15 +10,18 @@ import TrashManager from "@/components/TrashManager";
 import TelegramSetup from "@/components/TelegramSetup";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const Index = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [currentView, setCurrentView] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [files, setFiles] = useState([]);
   const [telegramFiles, setTelegramFiles] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [trashedItems, setTrashedItems] = useState([
     { id: 4, name: "old_document.pdf", type: "file" as const, size: "1.2 MB", deletedAt: "2 days ago" },
@@ -31,7 +34,7 @@ const Index = () => {
     } else {
       fetchTelegramFiles();
       
-      // Set up real-time subscription for new telegram files
+      // Set up real-time subscription for new telegram files with better error handling
       const channel = supabase
         .channel('telegram_files_changes')
         .on(
@@ -44,21 +47,60 @@ const Index = () => {
           },
           (payload) => {
             console.log('New file uploaded via Telegram:', payload)
+            toast({
+              title: "New File Received",
+              description: `${payload.new.file_name} has been uploaded to your storage`,
+            });
             fetchTelegramFiles(); // Refresh the file list
           }
         )
-        .subscribe()
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'telegram_files',
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload) => {
+            console.log('File updated:', payload)
+            fetchTelegramFiles(); // Refresh the file list
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'DELETE',
+            schema: 'public',
+            table: 'telegram_files',
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload) => {
+            console.log('File deleted:', payload)
+            fetchTelegramFiles(); // Refresh the file list
+          }
+        )
+        .subscribe((status) => {
+          console.log('Realtime subscription status:', status)
+          if (status === 'SUBSCRIBED') {
+            console.log('Successfully subscribed to realtime updates')
+          } else if (status === 'CHANNEL_ERROR') {
+            console.error('Error subscribing to realtime updates')
+          }
+        })
 
       return () => {
+        console.log('Cleaning up realtime subscription')
         supabase.removeChannel(channel);
       }
     }
-  }, [user, navigate]);
+  }, [user, navigate, toast]);
 
   const fetchTelegramFiles = async () => {
     if (!user) return;
 
     try {
+      setIsLoading(true);
       console.log('Fetching telegram files for user:', user.id)
       const { data, error } = await supabase
         .from('telegram_files')
@@ -68,6 +110,11 @@ const Index = () => {
 
       if (error) {
         console.error('Error fetching files:', error);
+        toast({
+          title: "Error",
+          description: "Failed to fetch files from Telegram storage",
+          variant: "destructive",
+        });
         return;
       }
 
@@ -86,6 +133,13 @@ const Index = () => {
       setFiles(formattedFiles);
     } catch (error) {
       console.error('Error fetching Telegram files:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load files",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -177,7 +231,14 @@ const Index = () => {
                   </div>
                 )}
                 
-                <FileGrid files={filteredFiles} viewMode={viewMode} />
+                {isLoading ? (
+                  <div className="text-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600">Loading your files...</p>
+                  </div>
+                ) : (
+                  <FileGrid files={filteredFiles} viewMode={viewMode} />
+                )}
               </>
             )}
           </main>

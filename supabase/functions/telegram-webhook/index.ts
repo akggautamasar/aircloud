@@ -23,7 +23,7 @@ serve(async (req) => {
     const update = await req.json()
     console.log('Received webhook update:', JSON.stringify(update, null, 2))
 
-    // Check if this is a message with a document, photo, or video
+    // Check if this is a message with a document, photo, video, audio, or voice
     if (!update.message) {
       console.log('No message in update, skipping')
       return new Response('OK', { status: 200, headers: corsHeaders })
@@ -53,40 +53,70 @@ serve(async (req) => {
     let fileSize = 0
     let fileType = ''
 
-    // Handle different file types
+    // Handle different file types with improved detection
     if (message.document) {
       telegramFile = message.document
       fileName = message.document.file_name || `document_${message.document.file_id}`
       fileSize = message.document.file_size || 0
       fileType = message.document.mime_type || 'application/octet-stream'
-      console.log('Processing document:', fileName)
-    } else if (message.photo) {
+      console.log('Processing document:', fileName, 'Size:', fileSize)
+    } else if (message.photo && message.photo.length > 0) {
       // Get the largest photo
       telegramFile = message.photo[message.photo.length - 1]
       fileName = `photo_${telegramFile.file_id}.jpg`
       fileSize = telegramFile.file_size || 0
       fileType = 'image/jpeg'
-      console.log('Processing photo:', fileName)
+      console.log('Processing photo:', fileName, 'Size:', fileSize)
     } else if (message.video) {
       telegramFile = message.video
       fileName = message.video.file_name || `video_${message.video.file_id}.mp4`
       fileSize = message.video.file_size || 0
       fileType = message.video.mime_type || 'video/mp4'
-      console.log('Processing video:', fileName)
+      console.log('Processing video:', fileName, 'Size:', fileSize)
     } else if (message.audio) {
       telegramFile = message.audio
       fileName = message.audio.file_name || `audio_${message.audio.file_id}.mp3`
       fileSize = message.audio.file_size || 0
       fileType = message.audio.mime_type || 'audio/mpeg'
-      console.log('Processing audio:', fileName)
+      console.log('Processing audio:', fileName, 'Size:', fileSize)
     } else if (message.voice) {
       telegramFile = message.voice
       fileName = `voice_${message.voice.file_id}.ogg`
       fileSize = message.voice.file_size || 0
       fileType = 'audio/ogg'
-      console.log('Processing voice:', fileName)
+      console.log('Processing voice:', fileName, 'Size:', fileSize)
+    } else if (message.animation) {
+      telegramFile = message.animation
+      fileName = message.animation.file_name || `animation_${message.animation.file_id}.mp4`
+      fileSize = message.animation.file_size || 0
+      fileType = message.animation.mime_type || 'video/mp4'
+      console.log('Processing animation:', fileName, 'Size:', fileSize)
+    } else if (message.sticker) {
+      telegramFile = message.sticker
+      fileName = `sticker_${message.sticker.file_id}.webp`
+      fileSize = message.sticker.file_size || 0
+      fileType = 'image/webp'
+      console.log('Processing sticker:', fileName, 'Size:', fileSize)
     } else {
       console.log('No supported file type found in message')
+      return new Response('OK', { status: 200, headers: corsHeaders })
+    }
+
+    if (!telegramFile || !telegramFile.file_id) {
+      console.log('No valid file object found')
+      return new Response('OK', { status: 200, headers: corsHeaders })
+    }
+
+    // Check if file already exists to avoid duplicates
+    const { data: existingFile } = await supabaseClient
+      .from('telegram_files')
+      .select('id')
+      .eq('telegram_file_id', telegramFile.file_id)
+      .eq('user_id', config.user_id)
+      .single()
+
+    if (existingFile) {
+      console.log('File already exists in database, skipping:', telegramFile.file_id)
       return new Response('OK', { status: 200, headers: corsHeaders })
     }
 
