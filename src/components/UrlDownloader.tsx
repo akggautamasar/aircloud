@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 
 interface UrlDownloaderProps {
   onDownloadFromUrl: (url: string, filename: string) => void;
@@ -16,6 +18,7 @@ const UrlDownloader = ({ onDownloadFromUrl }: UrlDownloaderProps) => {
   const [filename, setFilename] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,24 +31,54 @@ const UrlDownloader = ({ onDownloadFromUrl }: UrlDownloaderProps) => {
       return;
     }
 
+    if (!user) {
+      toast({
+        title: "Error",
+        description: "Please log in to download files",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
     try {
-      // Simulate getting file info from URL
-      const suggestedFilename = filename || url.split('/').pop() || 'downloaded_file';
-      onDownloadFromUrl(url.trim(), suggestedFilename);
+      console.log('Starting URL download:', url);
+      
+      const { data: result, error } = await supabase.functions.invoke('url-download', {
+        body: {
+          url: url.trim(),
+          filename: filename.trim() || undefined,
+        },
+      });
+
+      if (error) {
+        console.error('Download error:', error);
+        throw new Error(error.message || 'Download failed');
+      }
+
+      if (!result?.success) {
+        console.error('Download result error:', result);
+        throw new Error(result?.error || 'Download failed');
+      }
+
+      console.log('Download successful:', result);
       
       toast({
-        title: "Download Started",
-        description: `Starting download from URL to Telegram`,
+        title: "Download Successful",
+        description: `File "${result.fileName}" has been downloaded and uploaded to Telegram`,
       });
+      
+      // Call the callback to refresh file list
+      onDownloadFromUrl(url.trim(), result.fileName);
       
       setUrl("");
       setFilename("");
       setIsOpen(false);
-    } catch (error) {
+    } catch (error: any) {
+      console.error('URL download error:', error);
       toast({
-        title: "Error",
-        description: "Failed to start download",
+        title: "Download Failed",
+        description: error.message || "Failed to download file from URL",
         variant: "destructive",
       });
     } finally {
@@ -89,7 +122,7 @@ const UrlDownloader = ({ onDownloadFromUrl }: UrlDownloaderProps) => {
           <Input
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="Enter file URL"
+            placeholder="Enter file URL (max 50MB)"
             type="url"
             disabled={isLoading}
           />
@@ -103,7 +136,7 @@ const UrlDownloader = ({ onDownloadFromUrl }: UrlDownloaderProps) => {
         
         <div className="flex space-x-2">
           <Button type="submit" size="sm" disabled={isLoading}>
-            {isLoading ? "Starting..." : "Download"}
+            {isLoading ? "Downloading..." : "Download"}
           </Button>
           <Button
             type="button"

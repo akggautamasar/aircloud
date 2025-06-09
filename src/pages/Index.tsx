@@ -99,9 +99,10 @@ const Index = () => {
     // Implement folder creation logic
   };
 
-  const handleDownloadFromUrl = (url: string, filename: string) => {
-    console.log("Downloading from URL:", url, "as", filename);
-    // Implement URL download logic
+  const handleDownloadFromUrl = async (url: string, filename: string) => {
+    console.log("Downloaded from URL:", url, "as", filename);
+    // Refresh the file list after URL download
+    await fetchTelegramFiles();
   };
 
   const handleSearch = (query: string) => {
