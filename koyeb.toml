@@ -1,0 +1,21 @@
+
+[build]
+buildpack = "dockerfile"
+
+[app]
+name = "telegram-file-manager"
+
+[deploy]
+instance_type = "nano"
+regions = ["was"]
+
+[env]
+PORT = "8000"
+
+[health_check]
+grace_period = 120
+interval = 30
+path = "/"
+port = 8000
+protocol = "http"
+timeout = 10
