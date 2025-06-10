@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 
 interface FileUploadProps {
   onFileUpload: (files: File[]) => void;
@@ -15,9 +16,6 @@ const FileUpload = ({ onFileUpload }: FileUploadProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { user } = useAuth();
-
-  // Add your Python backend URL here
-  const PYTHON_BACKEND_URL = process.env.REACT_APP_PYTHON_BACKEND_URL || "https://your-koyeb-app.koyeb.app";
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -72,32 +70,38 @@ const FileUpload = ({ onFileUpload }: FileUploadProps) => {
             throw new Error(`File "${file.name}" is too large. Maximum size is 50MB`);
           }
 
-          // Create FormData for multipart upload
-          const formData = new FormData();
-          formData.append('file', file);
-          formData.append('user_id', user.id);
-
-          // Upload to Python backend
-          const response = await fetch(`${PYTHON_BACKEND_URL}/api/upload`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer admin123`, // Use your admin password
-            },
-            body: formData,
+          // Convert file to base64
+          const fileData = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const result = reader.result as string;
+              // Remove the data URL prefix (data:type;base64,)
+              const base64Data = result.split(',')[1];
+              resolve(base64Data);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
           });
 
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.detail || 'Upload failed');
+          // Upload using Supabase edge function
+          const { data, error } = await supabase.functions.invoke('telegram-upload', {
+            body: {
+              fileName: file.name,
+              fileSize: file.size,
+              fileType: file.type,
+              fileData: fileData,
+            },
+          });
+
+          if (error) {
+            throw new Error(error.message || 'Upload failed');
           }
 
-          const result = await response.json();
-          
-          if (!result.success) {
-            throw new Error(result.message || 'Upload failed');
+          if (!data?.success) {
+            throw new Error(data?.error || 'Upload failed');
           }
 
-          console.log('Upload successful:', result);
+          console.log('Upload successful:', data);
           successfulUploads.push(file);
           
         } catch (error: any) {

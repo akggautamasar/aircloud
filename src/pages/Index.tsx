@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import FileUpload from "@/components/FileUpload";
@@ -23,9 +24,6 @@ const Index = () => {
   const [telegramFiles, setTelegramFiles] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Add your Python backend URL here
-  const PYTHON_BACKEND_URL = process.env.REACT_APP_PYTHON_BACKEND_URL || "https://your-koyeb-app.koyeb.app";
-
   const [trashedItems, setTrashedItems] = useState([
     { id: 4, name: "old_document.pdf", type: "file" as const, size: "1.2 MB", deletedAt: "2 days ago" },
     { id: 5, name: "temp_folder", type: "folder" as const, deletedAt: "1 week ago" },
@@ -37,7 +35,7 @@ const Index = () => {
     } else {
       fetchTelegramFiles();
       
-      // Keep Supabase realtime for new files added via webhook
+      // Supabase realtime for new files
       const channel = supabase
         .channel('telegram_files_changes')
         .on(
@@ -106,26 +104,26 @@ const Index = () => {
       setIsLoading(true);
       console.log('Fetching telegram files for user:', user.id)
       
-      // Fetch from Python backend
-      const response = await fetch(`${PYTHON_BACKEND_URL}/api/files?user_id=${user.id}`, {
-        headers: {
-          'Authorization': `Bearer admin123`, // Use your admin password
-        },
-      });
+      // Fetch from Supabase directly
+      const { data, error } = await supabase
+        .from('telegram_files')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('uploaded_at', { ascending: false });
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch files from backend');
+      if (error) {
+        console.error('Error fetching files:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load files from database",
+          variant: "destructive",
+        });
+        return;
       }
 
-      const result = await response.json();
-      
-      if (!result.success) {
-        throw new Error(result.message || 'Failed to fetch files');
-      }
+      console.log('Fetched files from Supabase:', data)
 
-      console.log('Fetched files from backend:', result.files)
-
-      const formattedFiles = result.files.map((file: any) => ({
+      const formattedFiles = data.map(file => ({
         id: file.id,
         name: file.file_name,
         size: file.file_size ? `${(file.file_size / (1024 * 1024)).toFixed(1)} MB` : 'Unknown',
@@ -137,36 +135,12 @@ const Index = () => {
       setTelegramFiles(formattedFiles);
       setFiles(formattedFiles);
     } catch (error) {
-      console.error('Error fetching files from backend:', error);
-      
-      // Fallback to Supabase if backend is not available
-      try {
-        const { data, error: supabaseError } = await supabase
-          .from('telegram_files')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('uploaded_at', { ascending: false });
-
-        if (supabaseError) throw supabaseError;
-
-        const formattedFiles = data.map(file => ({
-          id: file.id,
-          name: file.file_name,
-          size: file.file_size ? `${(file.file_size / (1024 * 1024)).toFixed(1)} MB` : 'Unknown',
-          type: file.file_type || 'unknown',
-          uploadedAt: new Date(file.uploaded_at).toLocaleDateString(),
-          telegram_file_id: file.telegram_file_id,
-        }));
-
-        setTelegramFiles(formattedFiles);
-        setFiles(formattedFiles);
-      } catch (fallbackError) {
-        toast({
-          title: "Error",
-          description: "Failed to load files from both backend and database",
-          variant: "destructive",
-        });
-      }
+      console.error('Error fetching files:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load files",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
