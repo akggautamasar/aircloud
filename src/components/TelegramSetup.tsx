@@ -22,8 +22,8 @@ const TelegramSetup = () => {
   useEffect(() => {
     if (user) {
       checkExistingConfig();
-      // Set webhook URL
-      setWebhookUrl(`${supabase.supabaseUrl}/functions/v1/telegram-webhook`);
+      // Set webhook URL using the direct Supabase URL
+      setWebhookUrl('https://ewfiglrjzombjbirwgoi.supabase.co/functions/v1/telegram-webhook');
     }
   }, [user]);
 
