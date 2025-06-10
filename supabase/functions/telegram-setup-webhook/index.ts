@@ -13,11 +13,16 @@ serve(async (req) => {
   }
 
   try {
+    console.log('Telegram webhook setup request received');
+    
     // Get auth token from request
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
+      console.error('No authorization header found');
       throw new Error('No authorization header')
     }
+
+    console.log('Authorization header found, initializing Supabase client');
 
     // Initialize Supabase client
     const supabaseClient = createClient(
@@ -33,8 +38,11 @@ serve(async (req) => {
     // Get user from auth
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser()
     if (authError || !user) {
+      console.error('Auth error:', authError);
       throw new Error('Unauthorized')
     }
+
+    console.log('User authenticated:', user.id);
 
     // Parse request body
     const body = await req.json()
@@ -50,6 +58,8 @@ serve(async (req) => {
     const webhookUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/telegram-webhook`
     
     const telegramUrl = `https://api.telegram.org/bot${botToken}/setWebhook`
+    
+    console.log('Calling Telegram API to set webhook:', webhookUrl);
     
     const response = await fetch(telegramUrl, {
       method: 'POST',
@@ -74,6 +84,8 @@ serve(async (req) => {
     if (!result.ok) {
       throw new Error(`Telegram API error: ${result.description}`)
     }
+
+    console.log('Webhook set up successfully for user:', user.id);
 
     return new Response(
       JSON.stringify({ 

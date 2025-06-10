@@ -57,18 +57,34 @@ const TelegramSetup = () => {
       return;
     }
 
+    if (!user) {
+      toast({
+        title: "Error",
+        description: "Please log in to setup webhook",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
     try {
+      console.log('Setting up webhook for bot token:', botToken.substring(0, 10) + '...');
+      
       const { data, error } = await supabase.functions.invoke('telegram-setup-webhook', {
         body: { botToken: botToken.trim() }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Webhook setup error:', error);
+        throw new Error(error.message || 'Failed to setup webhook');
+      }
 
       if (!data?.success) {
+        console.error('Webhook setup failed:', data);
         throw new Error(data?.error || 'Failed to setup webhook');
       }
 
+      console.log('Webhook setup successful:', data);
       toast({
         title: "Success!",
         description: "Webhook has been set up successfully",
@@ -96,41 +112,74 @@ const TelegramSetup = () => {
       return;
     }
 
+    if (!user) {
+      toast({
+        title: "Error",
+        description: "Please log in to configure Telegram integration",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
     try {
+      console.log('Starting Telegram setup for user:', user.id);
+      
       // First setup webhook
-      await setupWebhook();
+      console.log('Setting up webhook...');
+      const { data: webhookResult, error: webhookError } = await supabase.functions.invoke('telegram-setup-webhook', {
+        body: { botToken: botToken.trim() }
+      });
 
-      // Test the bot configuration first using Supabase client
+      if (webhookError) {
+        console.error('Webhook setup error:', webhookError);
+        throw new Error(webhookError.message || 'Failed to setup webhook');
+      }
+
+      if (!webhookResult?.success) {
+        console.error('Webhook setup failed:', webhookResult);
+        throw new Error(webhookResult?.error || 'Failed to setup webhook');
+      }
+
+      console.log('Webhook setup successful, testing config...');
+
+      // Test the bot configuration
       const { data: testResult, error: testError } = await supabase.functions.invoke('telegram-test-config', {
         body: {
           botToken: botToken.trim(),
           channelId: channelId.trim(),
-          userId: user?.id,
+          userId: user.id,
         },
       });
 
       if (testError) {
-        console.error('Test error:', testError);
+        console.error('Config test error:', testError);
         throw new Error(testError.message || 'Failed to verify bot configuration');
       }
 
       if (!testResult?.success) {
+        console.error('Config test failed:', testResult);
         throw new Error(testResult?.error || 'Failed to verify bot configuration');
       }
 
+      console.log('Config test successful, saving to database...');
+
       // If test passes, save to database
-      const { error } = await supabase
+      const { error: dbError } = await supabase
         .from('user_telegram_config')
         .upsert({
-          user_id: user?.id,
+          user_id: user.id,
           bot_token: botToken.trim(),
           channel_id: channelId.trim(),
           is_active: true,
         });
 
-      if (error) throw error;
+      if (dbError) {
+        console.error('Database save error:', dbError);
+        throw new Error(dbError.message || 'Failed to save configuration');
+      }
 
+      console.log('Configuration saved successfully');
       setIsConfigured(true);
       setBotToken(''); // Clear for security
       toast({
