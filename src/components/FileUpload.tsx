@@ -4,7 +4,6 @@ import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
 
 interface FileUploadProps {
   onFileUpload: (files: File[]) => void;
@@ -16,6 +15,9 @@ const FileUpload = ({ onFileUpload }: FileUploadProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { user } = useAuth();
+
+  // Add your Python backend URL here
+  const PYTHON_BACKEND_URL = process.env.REACT_APP_PYTHON_BACKEND_URL || "https://your-koyeb-app.koyeb.app";
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -44,27 +46,6 @@ const FileUpload = ({ onFileUpload }: FileUploadProps) => {
     }
   };
 
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          const result = reader.result as string;
-          // Remove the data URL prefix (e.g., "data:image/png;base64,")
-          const base64 = result.split(',')[1];
-          if (!base64) {
-            throw new Error('Failed to convert file to base64');
-          }
-          resolve(base64);
-        } catch (error) {
-          reject(new Error('Failed to process file'));
-        }
-      };
-      reader.onerror = () => reject(new Error('Failed to read file'));
-      reader.readAsDataURL(file);
-    });
-  };
-
   const uploadFiles = async (files: File[]) => {
     if (!user) {
       toast({
@@ -78,23 +59,6 @@ const FileUpload = ({ onFileUpload }: FileUploadProps) => {
     setIsUploading(true);
     
     try {
-      // Check if user has Telegram configured
-      const { data: config } = await supabase
-        .from('user_telegram_config')
-        .select('*')
-        .eq('user_id', user.id)
-        .single();
-
-      if (!config) {
-        toast({
-          title: "Telegram Not Configured",
-          description: "Please configure your Telegram integration first",
-          variant: "destructive",
-        });
-        setIsUploading(false);
-        return;
-      }
-
       const successfulUploads: File[] = [];
       const failedUploads: string[] = [];
 
@@ -102,37 +66,35 @@ const FileUpload = ({ onFileUpload }: FileUploadProps) => {
         try {
           console.log(`Processing file: ${file.name}, size: ${file.size}, type: ${file.type}`);
           
-          // Check file size limits upfront
-          const isVideo = file.type?.startsWith('video/') || file.name.toLowerCase().match(/\.(mp4|avi|mov|mkv|webm|m4v)$/i);
-          const isImage = file.type?.startsWith('image/') || file.name.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i);
-          
-          const maxSize = isImage ? 10 * 1024 * 1024 : 50 * 1024 * 1024; // 10MB for images, 50MB for others
+          // Check file size limits
+          const maxSize = 50 * 1024 * 1024; // 50MB limit
           if (file.size > maxSize) {
-            throw new Error(`File "${file.name}" is too large. Maximum size is ${maxSize / 1024 / 1024}MB`);
+            throw new Error(`File "${file.name}" is too large. Maximum size is 50MB`);
           }
-          
-          // Convert file to base64
-          const fileBase64 = await fileToBase64(file);
-          
-          console.log(`File converted to base64, length: ${fileBase64.length}`);
 
-          const { data: result, error } = await supabase.functions.invoke('telegram-upload', {
-            body: {
-              fileName: file.name,
-              fileSize: file.size,
-              fileType: file.type || 'application/octet-stream',
-              fileData: fileBase64,
+          // Create FormData for multipart upload
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('user_id', user.id);
+
+          // Upload to Python backend
+          const response = await fetch(`${PYTHON_BACKEND_URL}/api/upload`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer admin123`, // Use your admin password
             },
+            body: formData,
           });
 
-          if (error) {
-            console.error('Upload error:', error);
-            throw new Error(error.message || 'Upload failed');
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'Upload failed');
           }
 
-          if (!result?.success) {
-            console.error('Upload result error:', result);
-            throw new Error(result?.error || 'Upload failed');
+          const result = await response.json();
+          
+          if (!result.success) {
+            throw new Error(result.message || 'Upload failed');
           }
 
           console.log('Upload successful:', result);
@@ -215,7 +177,7 @@ const FileUpload = ({ onFileUpload }: FileUploadProps) => {
             Files will be securely stored on your Telegram channel with unlimited space
           </p>
           <p className="text-xs text-gray-400 mb-4">
-            Max size: 10MB for images, 50MB for videos and documents
+            Max size: 50MB per file
           </p>
           
           <Button 
