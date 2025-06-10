@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Bot, MessageCircle, Shield, CheckCircle } from 'lucide-react';
+import { Bot, MessageCircle, Shield, CheckCircle, Webhook, Copy } from 'lucide-react';
 
 const TelegramSetup = () => {
   const { user } = useAuth();
@@ -17,10 +17,13 @@ const TelegramSetup = () => {
   const [loading, setLoading] = useState(false);
   const [isConfigured, setIsConfigured] = useState(false);
   const [checkingConfig, setCheckingConfig] = useState(true);
+  const [webhookUrl, setWebhookUrl] = useState('');
 
   useEffect(() => {
     if (user) {
       checkExistingConfig();
+      // Set webhook URL
+      setWebhookUrl(`${supabase.supabaseUrl}/functions/v1/telegram-webhook`);
     }
   }, [user]);
 
@@ -44,6 +47,44 @@ const TelegramSetup = () => {
     }
   };
 
+  const setupWebhook = async () => {
+    if (!botToken.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter your bot token first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('telegram-setup-webhook', {
+        body: { botToken: botToken.trim() }
+      });
+
+      if (error) throw error;
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to setup webhook');
+      }
+
+      toast({
+        title: "Success!",
+        description: "Webhook has been set up successfully",
+      });
+    } catch (error: any) {
+      console.error('Webhook setup error:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to setup webhook",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSetup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!botToken.trim() || !channelId.trim()) {
@@ -57,6 +98,9 @@ const TelegramSetup = () => {
 
     setLoading(true);
     try {
+      // First setup webhook
+      await setupWebhook();
+
       // Test the bot configuration first using Supabase client
       const { data: testResult, error: testError } = await supabase.functions.invoke('telegram-test-config', {
         body: {
@@ -91,7 +135,7 @@ const TelegramSetup = () => {
       setBotToken(''); // Clear for security
       toast({
         title: "Success!",
-        description: "Telegram integration configured successfully",
+        description: "Telegram integration configured successfully with webhook",
       });
     } catch (error: any) {
       console.error('Setup error:', error);
@@ -133,6 +177,14 @@ const TelegramSetup = () => {
     }
   };
 
+  const copyWebhookUrl = () => {
+    navigator.clipboard.writeText(webhookUrl);
+    toast({
+      title: "Copied!",
+      description: "Webhook URL copied to clipboard",
+    });
+  };
+
   if (checkingConfig) {
     return (
       <Card>
@@ -163,6 +215,15 @@ const TelegramSetup = () => {
             <Label>Channel ID</Label>
             <Input value={channelId} disabled />
           </div>
+          <div>
+            <Label>Webhook URL</Label>
+            <div className="flex space-x-2">
+              <Input value={webhookUrl} disabled />
+              <Button variant="outline" size="sm" onClick={copyWebhookUrl}>
+                <Copy className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
           <Button variant="destructive" onClick={handleDisconnect} disabled={loading}>
             {loading ? 'Disconnecting...' : 'Disconnect Telegram'}
           </Button>
@@ -179,7 +240,7 @@ const TelegramSetup = () => {
           <span>Setup Telegram Storage</span>
         </CardTitle>
         <CardDescription>
-          Connect your Telegram channel to use it as unlimited cloud storage
+          Connect your Telegram bot/channel to use it as unlimited cloud storage
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -195,7 +256,21 @@ const TelegramSetup = () => {
               <li>Create a private channel or use an existing one</li>
               <li>Add your bot as an administrator to the channel</li>
               <li>Get your channel ID (start with -100 for supergroups)</li>
+              <li>The webhook will be automatically configured</li>
             </ol>
+          </div>
+          
+          <div className="bg-green-50 p-4 rounded-lg">
+            <h4 className="font-medium flex items-center space-x-2 mb-2">
+              <Webhook className="w-4 h-4" />
+              <span>Webhook URL (Auto-configured):</span>
+            </h4>
+            <div className="flex space-x-2">
+              <Input value={webhookUrl} disabled className="text-xs" />
+              <Button variant="outline" size="sm" onClick={copyWebhookUrl}>
+                <Copy className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -223,9 +298,22 @@ const TelegramSetup = () => {
             />
           </div>
 
-          <Button type="submit" disabled={loading} className="w-full">
-            {loading ? 'Testing Configuration...' : 'Connect Telegram'}
-          </Button>
+          <div className="flex space-x-2">
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={setupWebhook}
+              disabled={loading || !botToken.trim()}
+              className="flex-1"
+            >
+              <Webhook className="w-4 h-4 mr-2" />
+              {loading ? 'Setting up...' : 'Setup Webhook Only'}
+            </Button>
+            
+            <Button type="submit" disabled={loading} className="flex-1">
+              {loading ? 'Configuring...' : 'Complete Setup'}
+            </Button>
+          </div>
         </form>
       </CardContent>
     </Card>

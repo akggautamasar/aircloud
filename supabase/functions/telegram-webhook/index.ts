@@ -23,15 +23,15 @@ serve(async (req) => {
     const update = await req.json()
     console.log('Received webhook update:', JSON.stringify(update, null, 2))
 
-    // Check if this is a message with any file type
-    if (!update.message) {
-      console.log('No message in update, skipping')
+    // Handle both message and channel_post (for channels)
+    const message = update.message || update.channel_post
+    if (!message) {
+      console.log('No message or channel_post in update, skipping')
       return new Response('OK', { status: 200, headers: corsHeaders })
     }
 
-    const message = update.message
     const chatId = message.chat.id.toString()
-    console.log('Processing message from chat:', chatId)
+    console.log('Processing message from chat:', chatId, 'type:', message.chat.type)
 
     // Check if this chat is configured for any user
     const { data: config, error: configError } = await supabaseClient
