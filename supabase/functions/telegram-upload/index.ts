@@ -7,9 +7,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Telegram file size limits
-const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB for documents
-const MAX_VIDEO_SIZE = 50 * 1024 * 1024 // 50MB for videos
+// Telegram file size limits - supporting larger files
+const MAX_FILE_SIZE = 2000 * 1024 * 1024 // 2GB for most files
 const MAX_PHOTO_SIZE = 10 * 1024 * 1024 // 10MB for photos
 
 serve(async (req) => {
@@ -49,7 +48,7 @@ serve(async (req) => {
       .single()
 
     if (configError || !config) {
-      throw new Error('Telegram not configured')
+      throw new Error('Telegram not configured. Please set up your Telegram bot in Settings.')
     }
 
     // Parse request body
@@ -63,16 +62,12 @@ serve(async (req) => {
     console.log(`Uploading file: ${fileName}, size: ${fileSize}, type: ${fileType}`)
 
     // Check file size limits
-    const isVideo = fileType?.startsWith('video/') || fileName.toLowerCase().match(/\.(mp4|avi|mov|mkv|webm|m4v)$/i)
-    const isImage = fileType?.startsWith('image/') || fileName.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i)
+    const isPhoto = fileType?.startsWith('image/') || fileName.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i)
     
-    if (isImage && fileSize > MAX_PHOTO_SIZE) {
+    if (isPhoto && fileSize > MAX_PHOTO_SIZE) {
       throw new Error(`Image files must be under ${MAX_PHOTO_SIZE / 1024 / 1024}MB`)
     }
-    if (isVideo && fileSize > MAX_VIDEO_SIZE) {
-      throw new Error(`Video files must be under ${MAX_VIDEO_SIZE / 1024 / 1024}MB`)
-    }
-    if (!isImage && !isVideo && fileSize > MAX_FILE_SIZE) {
+    if (fileSize > MAX_FILE_SIZE) {
       throw new Error(`Files must be under ${MAX_FILE_SIZE / 1024 / 1024}MB`)
     }
 
@@ -95,29 +90,32 @@ serve(async (req) => {
     const formData = new FormData()
     formData.append('chat_id', config.channel_id)
     
+    // Determine file type and upload accordingly
     let telegramUrl = `https://api.telegram.org/bot${config.bot_token}/sendDocument`
     
-    if (isVideo) {
+    if (isPhoto) {
+      formData.append('photo', blob, fileName)
+      telegramUrl = `https://api.telegram.org/bot${config.bot_token}/sendPhoto`
+    } else if (fileType?.startsWith('video/') || fileName.toLowerCase().match(/\.(mp4|avi|mov|mkv|webm|m4v)$/i)) {
       formData.append('video', blob, fileName)
       telegramUrl = `https://api.telegram.org/bot${config.bot_token}/sendVideo`
       formData.append('supports_streaming', 'true')
-      formData.append('width', '640')
-      formData.append('height', '480')
-    } else if (isImage) {
-      formData.append('photo', blob, fileName)
-      telegramUrl = `https://api.telegram.org/bot${config.bot_token}/sendPhoto`
+    } else if (fileType?.startsWith('audio/') || fileName.toLowerCase().match(/\.(mp3|wav|ogg|aac|flac|m4a)$/i)) {
+      formData.append('audio', blob, fileName)
+      telegramUrl = `https://api.telegram.org/bot${config.bot_token}/sendAudio`
     } else {
+      // Send as document for all other file types
       formData.append('document', blob, fileName)
     }
     
     const caption = `📎 ${fileName}\n💾 Size: ${(fileSize / 1024 / 1024).toFixed(2)} MB\n⏰ Uploaded: ${new Date().toLocaleString()}`
     formData.append('caption', caption)
 
-    console.log(`Sending ${isVideo ? 'video' : isImage ? 'photo' : 'document'} to Telegram...`)
+    console.log(`Sending file to Telegram as ${isPhoto ? 'photo' : fileType?.startsWith('video/') ? 'video' : fileType?.startsWith('audio/') ? 'audio' : 'document'}...`)
 
     // Upload to Telegram with timeout
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 60000) // 60 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 minute timeout for large files
 
     const response = await fetch(telegramUrl, {
       method: 'POST',
@@ -156,10 +154,12 @@ serve(async (req) => {
     
     // Get the appropriate file object based on type
     let telegramFile
-    if (isVideo) {
+    if (fileType?.startsWith('video/')) {
       telegramFile = result.result.video
-    } else if (isImage) {
+    } else if (isPhoto) {
       telegramFile = result.result.photo?.[result.result.photo.length - 1] // Get highest resolution
+    } else if (fileType?.startsWith('audio/')) {
+      telegramFile = result.result.audio
     } else {
       telegramFile = result.result.document
     }
@@ -193,7 +193,7 @@ serve(async (req) => {
         messageId: result.result.message_id,
         fileName: fileName,
         fileSize: fileSize,
-        fileType: isVideo ? 'video' : isImage ? 'image' : 'document'
+        fileType: isPhoto ? 'image' : fileType?.startsWith('video/') ? 'video' : fileType?.startsWith('audio/') ? 'audio' : 'document'
       }),
       { 
         headers: { 

@@ -23,7 +23,7 @@ serve(async (req) => {
     const update = await req.json()
     console.log('Received webhook update:', JSON.stringify(update, null, 2))
 
-    // Check if this is a message with a document, photo, video, audio, or voice
+    // Check if this is a message with any file type
     if (!update.message) {
       console.log('No message in update, skipping')
       return new Response('OK', { status: 200, headers: corsHeaders })
@@ -53,7 +53,7 @@ serve(async (req) => {
     let fileSize = 0
     let fileType = ''
 
-    // Handle different file types with improved detection
+    // Handle ALL file types including documents, photos, videos, audio, voice, animations, stickers, video notes
     if (message.document) {
       telegramFile = message.document
       fileName = message.document.file_name || `document_${message.document.file_id}`
@@ -75,7 +75,7 @@ serve(async (req) => {
       console.log('Processing video:', fileName, 'Size:', fileSize)
     } else if (message.audio) {
       telegramFile = message.audio
-      fileName = message.audio.file_name || `audio_${message.audio.file_id}.mp3`
+      fileName = message.audio.file_name || message.audio.title || `audio_${message.audio.file_id}.mp3`
       fileSize = message.audio.file_size || 0
       fileType = message.audio.mime_type || 'audio/mpeg'
       console.log('Processing audio:', fileName, 'Size:', fileSize)
@@ -84,19 +84,25 @@ serve(async (req) => {
       fileName = `voice_${message.voice.file_id}.ogg`
       fileSize = message.voice.file_size || 0
       fileType = 'audio/ogg'
-      console.log('Processing voice:', fileName, 'Size:', fileSize)
+      console.log('Processing voice message:', fileName, 'Size:', fileSize)
     } else if (message.animation) {
       telegramFile = message.animation
       fileName = message.animation.file_name || `animation_${message.animation.file_id}.mp4`
       fileSize = message.animation.file_size || 0
       fileType = message.animation.mime_type || 'video/mp4'
-      console.log('Processing animation:', fileName, 'Size:', fileSize)
+      console.log('Processing animation/GIF:', fileName, 'Size:', fileSize)
     } else if (message.sticker) {
       telegramFile = message.sticker
       fileName = `sticker_${message.sticker.file_id}.webp`
       fileSize = message.sticker.file_size || 0
       fileType = 'image/webp'
       console.log('Processing sticker:', fileName, 'Size:', fileSize)
+    } else if (message.video_note) {
+      telegramFile = message.video_note
+      fileName = `video_note_${message.video_note.file_id}.mp4`
+      fileSize = message.video_note.file_size || 0
+      fileType = 'video/mp4'
+      console.log('Processing video note:', fileName, 'Size:', fileSize)
     } else {
       console.log('No supported file type found in message')
       return new Response('OK', { status: 200, headers: corsHeaders })
